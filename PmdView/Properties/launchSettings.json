@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "PmdView": {
+      "commandName": "Project",
+      "commandLineArgs": "\"D:\\DownloadFolder\\Mort the Chicken (USA)\\STAGE1\\STAGE1\\stage01.pmd\" \"D:\\DownloadFolder\\Mort the Chicken (USA)\\STAGE1\\STAGE.TPF\" \"C:\\SsdWork\\PmdView\\testresult\""
+    }
+  }
+}

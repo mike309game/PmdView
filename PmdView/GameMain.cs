@@ -13,6 +13,8 @@ using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Xml.Xsl;
+using RectpackSharp;
+using System.Linq.Expressions;
 
 namespace PmdView {
 	internal class GameMain : Game {
@@ -23,57 +25,49 @@ namespace PmdView {
 
 		string pmdPath = string.Empty;
 		string tpfPath = string.Empty;
-		XnaPmd mdl;
-		Tim[] tims;
+		string pfPath = string.Empty;
+		string pfDumpFolder = string.Empty;
+		bool pfDumpPrefixIndex = true;
+
+		string plyExportFolder = string.Empty;
+		string objExportFolder = string.Empty;
+
+		XnaPmd? mainMdl;
+		PackFile? pf;
+		TimBundle? timBundle;
 		int mdlFrame;
 
-		RenderTarget2D vram;
 		SpriteBatch sbatch;
-
-		VramMgr vramMgr = new();
 
 		Vector2 vramOffset = new();
 
 		public void LoadTpf(string path) {
 			path = path.Trim('"');
-			using (var file = new FileStream(path, FileMode.Open)) {
-				using (var reader = new BinaryReader(file)) {
-					PackFile pf = new(reader);
-					tims = new Tim[pf.files.Count];
-					for(var i = 0; i < tims.Length; i++) {
-						MemoryStream stream = new(pf.files[i].data);
-						BinaryReader timReader = new(stream);
-						Tim tim = new(timReader);
-						stream.Dispose();
-						timReader.Dispose();
-						vramMgr.BlitTim(tim);
-						tims[i] = tim;
-					}
-				}
+			timBundle?.Dispose();
+			timBundle = null;
+			try {
+				timBundle = TimBundle.FromTpf(path, GraphicsDevice);
+				tpfPath = string.Empty;
+			} catch(Exception e) {
+				lastException = e;
+				showErrorModal = true;
 			}
-			tpfPath = string.Empty;
-			vram.SetData<uint>(vramMgr.framebuffer);
 		}
 
-		public void LoadPmd(string path) {
+		public void LoadMainPmd(string path) {
 			path = path.Trim('"');
-			mdl?.Dispose();
-			using(var file = new FileStream(path, FileMode.Open)) {
-				using(var reader = new BinaryReader(file)) {
-					Pmd pmd;
-					try {
-						pmd = new(reader, 2);
-					} catch(Exception) {
-						Console.WriteLine("Pmd loading failed with double buffer prims, trying without");
-						reader.BaseStream.Position = 0;
-						pmd = new(reader, 1);
-					}
-					mdlFrame = 0;
-					mdl = new(in pmd, GraphicsDevice);
-					mdl.tims = tims;
-				}
+			mainMdl?.Dispose();
+			mainMdl = null;
+			mdlFrame = 0;
+			try {
+				var pmd = Pmd.FromFile(path);
+				mainMdl = new(in pmd, GraphicsDevice);
+				pmdPath = string.Empty;
+			} catch (Exception e) {
+				mainMdl?.Dispose();
+				lastException = e;
+				showErrorModal = true;
 			}
-			pmdPath = string.Empty;
 		}
 
 		public GameMain() {
@@ -92,14 +86,18 @@ namespace PmdView {
 		bool canControlCam = true;
 		bool canToggleCam = true;
 		Vector3 camPos = new();
+		bool showErrorModal = false;
+		Exception lastException;
+		int pfSelectedItem = -1;
 
 		protected override void Draw(GameTime gameTime) {
 			GraphicsDevice.Clear(Color.Black);
 
-			sbatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend);
-
-			sbatch.Draw(vram, vramOffset, Color.White);
-			sbatch.End();
+			if (timBundle?.texture is not null) {
+				sbatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend);
+				sbatch.Draw(timBundle.texture, vramOffset, Color.White);
+				sbatch.End();
+			}
 
 			//Vector3 camPos = new(MathF.Cos((float)gameTime.TotalGameTime.TotalSeconds) * 4, MathF.Sin((float)gameTime.TotalGameTime.TotalSeconds) * 4, 128);
 
@@ -157,44 +155,150 @@ namespace PmdView {
 			//Matrix sc = Matrix.CreateScale((float)Math.Sin(gameTime.TotalGameTime.TotalSeconds) * 4);
 			Matrix sc = Matrix.CreateScale(mdlScale);
 
-			mdl?.Draw(mdlFrame, world * sc, view, proj, GraphicsDevice, ref vram);
-
 			imRenderer.BeforeLayout(gameTime);
-			ImGui.Begin("fart");
+
+			if (timBundle is not null) {
+				try {
+					mainMdl?.Draw(mdlFrame, world * sc, view, proj, GraphicsDevice, in timBundle);
+				} catch (Exception e) {
+					lastException = e;
+					showErrorModal = true;
+					mainMdl?.Dispose();
+					mainMdl = null;
+				}
+			}
+
+			if (showErrorModal) {
+				ImGui.OpenPopup("Error");
+				showErrorModal = false;
+			}
+			bool dummy = true;
+			
+			if(ImGui.BeginPopupModal("Error", ref dummy, ImGuiWindowFlags.AlwaysAutoResize)) {
+				ImGui.TextUnformatted($"ERROR:\n{lastException?.ToString() ?? "Something nasty's going on or my code sucks (likely case)"}");
+				if(ImGui.Button("OK")) {
+					ImGui.CloseCurrentPopup();
+				}
+				ImGui.EndPopup();
+			}
+			ImGui.Begin("Main", ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.AlwaysAutoResize);
+			
+			if(ImGui.Button("Export main model to ply")) {
+				try {
+					for(var i = 0; i < mainMdl?.pmd.frameVertices.GetLength(0); i++) {
+						string path = $"{plyExportFolder}{Path.DirectorySeparatorChar}Frame_{i}.ply";
+						Pmd2Ply.WritePly(in mainMdl.pmd, path, in timBundle, i);
+					}
+					using (FileStream stream = new($"{plyExportFolder}{Path.DirectorySeparatorChar}Texture.png", FileMode.Create))
+						timBundle.texture.SaveAsPng(stream, timBundle.texture.Width, timBundle.texture.Height);
+				} catch(Exception e) {
+					lastException = e;
+					showErrorModal = true;
+				}
+			}
+			ImGui.SameLine();
+			ImGui.InputText("##imtired", ref plyExportFolder, 512);
+
 			ImGui.TextUnformatted($"yaw {yaw} pitch {pitch}");
-			ImGui.SliderInt("Frame", ref mdlFrame, 0, mdl?.pmd.frameVertices.GetLength(0)-1 ?? 0);
+			ImGui.SliderInt("Frame", ref mdlFrame, 0, mainMdl?.pmd.frameVertices.GetLength(0)-1 ?? 0);
 			var scaleNumerics = Shenanigans.XnaToNumerics(mdlScale);
 			ImGui.SliderFloat3("Model scale", ref scaleNumerics, -16, 16);
 			mdlScale = Shenanigans.NumericsToXna(scaleNumerics);
 
-			ImGui.InputText("Tpf", ref tpfPath, 512);
+			ImGui.InputText("Texture bundle path (TPF)", ref tpfPath, 512);
 			ImGui.SameLine();
 			if(ImGui.Button("Load")) {
 				LoadTpf(tpfPath);
 			}
-			ImGui.InputText("Pmd", ref pmdPath, 512);
+			ImGui.InputText("Main model (PMD)", ref pmdPath, 512);
 			ImGui.SameLine();
 			if (ImGui.Button("Load##pmd")) {
-				LoadPmd(pmdPath);
+				LoadMainPmd(pmdPath);
 			}
 
-			if (ImGui.CollapsingHeader("g")) {
+			//////////////////////////////////////////////////
+
+			if (ImGui.CollapsingHeader("Object Visibility")) {
 				ImGui.Indent();
 				if(ImGui.Button("Show all")) {
-					for (var i = 0; i < mdl?.objs.Length; i++) {
-						mdl.objs[i].show = true;
+					for (var i = 0; i < mainMdl?.objs.Length; i++) {
+						mainMdl.objs[i].show = true;
 					}
 				}
-				for(var i = 0; i < mdl?.objs.Length; i++) {
+				for(var i = 0; i < mainMdl?.objs.Length; i++) {
 					ImGui.PushID(i);
-					ImGui.Checkbox($"Object {i}", ref mdl.objs[i].show);
+					ImGui.Checkbox($"Object {i}", ref mainMdl.objs[i].show);
 					ImGui.SameLine();
 					if (ImGui.Button("Solo")) {
-						for(var j = 0; j < mdl.objs.Length; j++) {
-							mdl.objs[j].show = j == i;
+						for(var j = 0; j < mainMdl.objs.Length; j++) {
+							mainMdl.objs[j].show = j == i;
 						}
 					}
 					ImGui.PopID();
+				}
+				ImGui.Unindent();
+			}
+
+			//////////////////////////////////////////////////
+			if(ImGui.CollapsingHeader("Packfile Viewer")) {
+				ImGui.Indent();
+				ImGui.TextUnformatted("Path to packfile");
+				ImGui.InputText("##pfpath", ref pfPath, 512); ImGui.SameLine();
+				if (ImGui.Button("Load##pfloadbt")) {
+					pfPath = pfPath.Trim('"');
+					pf?.Dispose();
+					pfSelectedItem = -1;
+					try {
+						pf = PackFile.FromFile(pfPath);
+					} catch (Exception e) {
+						pf = null;
+						lastException = e;
+						showErrorModal = true;
+					}
+				}
+				if (pf is not null) {
+					if (ImGui.BeginListBox("##pflistbox", new(200f, 200f))) {
+						for(var i = 0; i < pf.files.Count; i++) {
+							bool isSelected = pfSelectedItem == i;
+							ImGui.PushID(i);
+							if (ImGui.Selectable(pf.files[i].filename, isSelected)) {
+								pfSelectedItem = i;
+							}
+							ImGui.PopID();
+							if(isSelected) {
+								ImGui.SetItemDefaultFocus();
+							}
+						}
+						ImGui.EndListBox();
+					}
+					ImGui.SameLine();
+					ImGui.BeginGroup();
+					if(ImGui.Button("Load as model")) {
+						try {
+							mdlFrame = 0;
+							mainMdl?.Dispose();
+							Pmd pmd = Pmd.FromBytes(in pf.files[pfSelectedItem].data);
+							mainMdl = new(in pmd, GraphicsDevice);
+						} catch(Exception e) {
+							lastException = e;
+							showErrorModal = true;
+						}
+					}
+					ImGui.EndGroup();
+					ImGui.InputText("##pfdumppath", ref pfDumpFolder, 512); ImGui.SameLine();
+					if (ImGui.Button("Export files to folder")) {
+						try {
+							pfDumpFolder = pfDumpFolder.Trim('"');
+							if (pfDumpFolder == string.Empty)
+								throw new Exception("HEY JACKASS!!!!!! You don't want to dump files in the root of the program.\nInsert the path to a folder.");
+							else
+								pf.Dump(pfDumpFolder, pfDumpPrefixIndex);
+						} catch (Exception e) {
+							lastException = e;
+							showErrorModal = true;
+						}
+					}
+					ImGui.Checkbox("Prefix filename with index in packfile (RECOMMENDED)", ref pfDumpPrefixIndex);
 				}
 				ImGui.Unindent();
 			}
@@ -205,7 +309,6 @@ namespace PmdView {
 			base.Draw(gameTime);
 		}
 		protected override void Update(GameTime gameTime) {
-			//PutTim(test);
 			if (io.MouseDown[2]) {
 				vramOffset.X += io.MouseDelta.X;
 				vramOffset.Y += io.MouseDelta.Y;
@@ -224,43 +327,9 @@ namespace PmdView {
 
 			var args = Environment.GetCommandLineArgs();
 
-			vram = new(GraphicsDevice, VramMgr.VRAMWIDTH, VramMgr.VRAMHEIGHT, false, SurfaceFormat.Color, DepthFormat.None);
-			vram.SetData<uint>(vramMgr.framebuffer);
-
 			GC.Collect();
 
 			base.LoadContent();
-		}
-
-		void PutBitMap(Texture2D texture, Rectangle rect, PixelMode pm) {
-			
-			GraphicsDevice.SetRenderTarget(vram);
-			
-			var batch = new SpriteBatch(GraphicsDevice);
-			switch(pm) {
-				case PixelMode.Bpp4:
-					rect.X *= 4;
-					break;
-				case PixelMode.Bpp8:
-					rect.X *= 2;
-					rect.Y += 512;
-					break;
-				case PixelMode.Bpp16:
-					rect.X += 1024 * 2;
-					rect.Y += 512;
-					break;
-
-			}
-			//rect = tim.graphicRect;
-			/*rect.X += Mouse.GetState().X;
-			rect.Y += Mouse.GetState().Y;*/
-
-			batch.Begin(SpriteSortMode.Deferred, BlendState.Opaque);
-			batch.Draw(texture, rect, Color.White);
-			batch.End();
-			batch.Dispose();
-			
-			GraphicsDevice.SetRenderTargets(null);
 		}
 	}
 }

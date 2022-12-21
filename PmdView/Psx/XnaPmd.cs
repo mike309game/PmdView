@@ -28,7 +28,7 @@ namespace PmdView.Psx {
 				}
 			}
 
-			public void GenMesh(in Tim[] tims, in Pmd pmd, int frame, GraphicsDevice gd) {
+			public void GenMesh(in TimBundle bundle, in Pmd pmd, int frame, GraphicsDevice gd) {
 				var obj = pmd.objects[idx];
 				for (var i = 0; i < gps.Length; i++) {
 					var gp = gps[i];
@@ -63,17 +63,8 @@ namespace PmdView.Psx {
 						}
 						if(gp.hasTex) {
 							//var verts = new List<VertexPositionColorTexture>();
-							var tim = tims[prim.tpage];
-							var timWidth = tim.picWidth;
-							Vector2 uvAddition = new(tim.picX, tim.picY);
-							if (tim.pixelMode == PixelMode.Bpp4) {
-								uvAddition.X *= 4;
-								timWidth *= 4;
-							} else if (tim.pixelMode == PixelMode.Bpp8) {
-								uvAddition.X *= 2;
-								uvAddition.Y += 512;
-								timWidth *= 4;
-							}
+							var rect = bundle.rects[prim.tpage];
+							Vector2 uvAddition = new(rect.X, rect.Y);
 							Vector2[] uv = new Vector2[4];
 							uv[0] = new Vector2(prim.u0, prim.v0);
 							uv[1] = new Vector2(prim.u1, prim.v1);
@@ -81,11 +72,11 @@ namespace PmdView.Psx {
 							uv[3] = new Vector2(prim.u3, prim.v3);
 
 							for (var k = 0; k < 4; k++) {
-								uv[k].X = (uv[k].X == timWidth - 1) ? uv[k].X + 1 : uv[k].X;
-								uv[k].Y = (uv[k].Y == tim.picHeight - 1) ? uv[k].Y + 1 : uv[k].Y;
+								uv[k].X = (uv[k].X == rect.Width - 1) ? uv[k].X + 1 : uv[k].X;
+								uv[k].Y = (uv[k].Y == rect.Height - 1) ? uv[k].Y + 1 : uv[k].Y;
 								uv[k] += uvAddition;
-								uv[k].X /= 4096;
-								uv[k].Y /= 1024;
+								uv[k].X /= bundle.bounds.Width;
+								uv[k].Y /= bundle.bounds.Height;
 							}
 
 							VertexPositionColorTexture vert1 = new(vec1, col1, uv[0]);
@@ -205,12 +196,12 @@ namespace PmdView.Psx {
 			}
 		}
 
-		public void Draw(int frame, Matrix world, Matrix view, Matrix projection, GraphicsDevice gd, ref RenderTarget2D vram) {
+		public void Draw(int frame, Matrix world, Matrix view, Matrix projection, GraphicsDevice gd, in TimBundle bundle) {
 			if(frame != lastFrame) {
 				lastFrame = frame;
 				//RegenMesh(frame, gd);
 				foreach(var obj in objs) {
-					obj.GenMesh(in tims, in pmd, frame, gd);
+					obj.GenMesh(in bundle, in pmd, frame, gd);
 				}
 			}
 			basicEffect.Projection = projection;
@@ -220,7 +211,7 @@ namespace PmdView.Psx {
 			gd.RasterizerState = RasterizerState.CullNone;
 			gd.DepthStencilState = DepthStencilState.Default;
 			gd.SamplerStates[0] = SamplerState.PointWrap;
-			basicEffect.Texture = vram;
+			basicEffect.Texture = bundle.texture;
 			foreach(EffectPass pass in basicEffect.CurrentTechnique.Passes) {
 				pass.Apply();
 				//gd.DrawPrimitives(Microsoft.Xna.Framework.Graphics.PrimitiveType.TriangleList, 0, vb.VertexCount / 3);

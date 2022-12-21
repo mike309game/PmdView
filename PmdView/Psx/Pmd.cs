@@ -127,5 +127,30 @@ namespace PmdView.Psx {
 				objects[i] = obj;
 			}
 		}
+
+		public static Pmd FromStream(Stream stream) {
+			Pmd pmd;
+			var initialPos = stream.Position;
+			using(BinaryReader reader = new(stream)) {
+				try {
+					pmd = new(reader, 2);
+				} catch(Exception) {
+					reader.BaseStream.Position = initialPos;
+					pmd = new(reader, 1);
+				}
+			}
+			return pmd;
+		}
+		public static Pmd FromFile(string path) {
+			using(FileStream stream = new(path, FileMode.Open)) {
+				return FromStream(stream);
+			}
+		}
+
+		public static Pmd FromBytes(in byte[] data) {
+			using(MemoryStream stream = new(data)) {
+				return FromStream(stream);
+			}
+		}
 	}
 }

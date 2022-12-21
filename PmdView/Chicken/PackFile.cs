@@ -18,12 +18,12 @@ namespace PmdView.Chicken {
 			public string filename;
 
 			public File(BinaryReader reader, long dataBlockOffset) {
-				var filename = reader.ReadBytes(0x10);
+				var filename = reader.ReadChars(0x10);
 				if(filename[0x0F] != 0) { //Beeg filename
 					var posHex = (reader.BaseStream.Position - 0x10).ToString("X8");
 					throw new InvalidDataException($"Packfile has file at 0x{posHex} with no null terminator");
 				}
-				this.filename = Encoding.ASCII.GetString(filename);
+				this.filename = new string(filename).Replace("\0", string.Empty); //isn't csharp just *wonderful*?
 				var dataLen = reader.ReadInt32();
 				var dataOffset = reader.ReadUInt32(); //Offset from start of data block
 
@@ -61,6 +61,29 @@ namespace PmdView.Chicken {
 			files = new();
 			for(var i = 0; i < fileCount; i++) {
 				files.Add(new File(reader, firstDataAddr));
+			}
+		}
+
+		public static PackFile FromStream(Stream stream) {
+			using(BinaryReader reader = new(stream)) {
+				return new(reader);
+			}
+		}
+
+		public static PackFile FromFile(string path) {
+			using(FileStream stream = new(path, FileMode.Open)) {
+				return FromStream(stream);
+			}
+		}
+
+		public void Dump(string path, bool prefixIndex) {
+			for (var i = 0; i < files.Count; i++) {
+				string fname = $"{path}{Path.DirectorySeparatorChar}{(prefixIndex ? (i.ToString() + "_") : null)}{files[i].filename}";
+				using (var stream = new FileStream(fname, FileMode.Create)) {
+					stream.Write(files[i].data);
+					stream.Close();
+					stream.Dispose();
+				}
 			}
 		}
 

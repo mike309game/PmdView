@@ -26,6 +26,17 @@ namespace PmdView.Psx {
 
 		public int clutX, clutY, clutWidth, clutHeight;
 		public int picX, picY, picWidth, picHeight;
+		public int RealWidth {
+			get {
+				switch(pixelMode) {
+					case PixelMode.Bpp4: return picWidth * 4;
+					case PixelMode.Bpp8: return picWidth * 2;
+					default: return picWidth;
+				}
+			}
+		}
+
+		public string? name;
 
 		public ushort GetTpagValue() {
 			return (ushort)((((picX) / 64) & 15) |
@@ -99,6 +110,24 @@ namespace PmdView.Psx {
 			}
 			
 			return data;
+		}
+
+		public TimBlitter ToFramebuffer() {
+			TimBlitter blitter = new(RealWidth, picHeight, false);
+			blitter.BlitTim(this);
+			return blitter;
+		}
+
+		public static Tim FromStream(Stream stream) {
+			using(BinaryReader reader = new(stream)) {
+				return new(reader);
+			}
+		}
+
+		public static Tim FromBytes(in byte[] data) {
+			using(MemoryStream stream = new(data)) {
+				return FromStream(stream);
+			}
 		}
 	}
 }

@@ -68,7 +68,7 @@ namespace PmdView.Psx {
 									xx *= 2;
 								}*/
 								uv[i].X = (xx + uv[i].X) / bundle.bounds.Width;
-								uv[i].Y = 1 - ((yy + uv[i].Y + (bpp == 0 ? 0 : 512)) / bundle.bounds.Height);
+								uv[i].Y = 1 - (yy + uv[i].Y) / bundle.bounds.Height;
 							}
 						}
 

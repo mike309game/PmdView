@@ -183,21 +183,20 @@ namespace PmdView {
 			}
 			ImGui.Begin("Main", ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.AlwaysAutoResize);
 			
-			if(ImGui.Button("Export main model to ply")) {
+			ImGui.InputText("Export path", ref plyExportFolder, 512);
+			if (ImGui.Button("Export main model to ply")) {
 				try {
-					for(var i = 0; i < mainMdl?.pmd.frameVertices.GetLength(0); i++) {
+					for (var i = 0; i < mainMdl?.pmd.frameVertices.GetLength(0); i++) {
 						string path = $"{plyExportFolder}{Path.DirectorySeparatorChar}Frame_{i}.ply";
 						Pmd2Ply.WritePly(in mainMdl.pmd, path, in timBundle, i);
 					}
 					using (FileStream stream = new($"{plyExportFolder}{Path.DirectorySeparatorChar}Texture.png", FileMode.Create))
 						timBundle.texture.SaveAsPng(stream, timBundle.texture.Width, timBundle.texture.Height);
-				} catch(Exception e) {
+				} catch (Exception e) {
 					lastException = e;
 					showErrorModal = true;
 				}
 			}
-			ImGui.SameLine();
-			ImGui.InputText("##imtired", ref plyExportFolder, 512);
 
 			ImGui.TextUnformatted($"yaw {yaw} pitch {pitch}");
 			ImGui.SliderInt("Frame", ref mdlFrame, 0, mainMdl?.pmd.frameVertices.GetLength(0)-1 ?? 0);

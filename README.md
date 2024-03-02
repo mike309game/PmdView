@@ -1,3 +1,5 @@
+WARNING this code sucks because it's not fun to code in VS 2022 on my computer with parts no younger than eleven years. I'll rewrite it at some point.
+
 # Pmdview
 
 ## What is this
